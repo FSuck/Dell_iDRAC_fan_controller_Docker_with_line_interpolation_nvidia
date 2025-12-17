@@ -124,14 +124,15 @@ function set_iDRAC_login_string() {
 }
 
 # Retrieve temperature sensors data using ipmitool
-# Usage : retrieve_temperatures "$IS_EXHAUST_TEMPERATURE_SENSOR_PRESENT" "$IS_CPU2_TEMPERATURE_SENSOR_PRESENT"
+# Usage : retrieve_temperatures "$IS_EXHAUST_TEMPERATURE_SENSOR_PRESENT" "$IS_CPU2_TEMPERATURE_SENSOR_PRESENT" "$IS_GPU_TEMPERATURE_SENSOR_PRESENT"
 function retrieve_temperatures() {
-  if (( $# != 2 )); then
-    print_error "Illegal number of parameters.\nUsage: retrieve_temperatures \$IS_EXHAUST_TEMPERATURE_SENSOR_PRESENT \$IS_CPU2_TEMPERATURE_SENSOR_PRESENT"
+  if (( $# != 3 )); then
+    print_error "Illegal number of parameters.\nUsage: retrieve_temperatures \$IS_EXHAUST_TEMPERATURE_SENSOR_PRESENT \$IS_CPU2_TEMPERATURE_SENSOR_PRESENT \$IS_GPU_TEMPERATURE_SENSOR_PRESENT"
     return 1
   fi
   local -r IS_EXHAUST_TEMPERATURE_SENSOR_PRESENT=$1
   local -r IS_CPU2_TEMPERATURE_SENSOR_PRESENT=$2
+  local -r $IS_GPU_TEMPERATURE_SENSOR_PRESENT=$3
 
   local -r DATA=$(ipmitool -I $IDRAC_LOGIN_STRING sdr type temperature | grep degrees)
 
@@ -162,6 +163,13 @@ function retrieve_temperatures() {
     EXHAUST_TEMPERATURE=$(echo "$DATA" | grep Exhaust | grep -Po '\d{2}' | tail -1)
   else
     EXHAUST_TEMPERATURE="-"
+  fi
+
+  # If GPU is present, parse its temperature data
+  if $IS_GPU_TEMPERATURE_SENSOR_PRESENT; then
+    GPU_TEMPERATURE=$(nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits)
+  else
+    GPU_TEMPERATURE="-"
   fi
 }
 
@@ -278,7 +286,7 @@ print_interpolated_fan_speeds() {
     else
       highest_CPU_temperature=$((CPU_TEMPERATURE_THRESHOLD_FOR_FAN_SPEED_INTERPOLATION + i * step))
     fi
-    fan_speed=$(calculate_interpolated_fan_speed LOCAL_DECIMAL_FAN_SPEED LOCAL_DECIMAL_HIGH_FAN_SPEED highest_CPU_temperature CPU_TEMPERATURE_THRESHOLD_FOR_FAN_SPEED_INTERPOLATION CPU_TEMPERATURE_THRESHOLD)
+    fan_speed=$(calculate_interpolated_fan_speed "$LOCAL_DECIMAL_FAN_SPEED" "$LOCAL_DECIMAL_HIGH_FAN_SPEED" "$highest_CPU_temperature" "$CPU_TEMPERATURE_THRESHOLD_FOR_FAN_SPEED_INTERPOLATION" "$CPU_TEMPERATURE_THRESHOLD")
     bar_length=$((fan_speed * chart_width / 100))
     empty_length=$((chart_width - bar_length))
 
@@ -316,7 +324,14 @@ function calculate_interpolated_fan_speed() {
   local -r highest_CPU_temperature=$3
   local -r CPU_TEMPERATURE_THRESHOLD_FOR_FAN_SPEED_INTERPOLATION=$4
   local -r CPU_TEMPERATURE_THRESHOLD=$5
-  return $((LOCAL_DECIMAL_FAN_SPEED + ((LOCAL_DECIMAL_HIGH_FAN_SPEED - LOCAL_DECIMAL_FAN_SPEED) * ((highest_CPU_temperature - CPU_TEMPERATURE_THRESHOLD_FOR_FAN_SPEED_INTERPOLATION) / (CPU_TEMPERATURE_THRESHOLD - CPU_TEMPERATURE_THRESHOLD_FOR_FAN_SPEED_INTERPOLATION))))
+
+  local -r CALCULATED_FAN_SPEED=$(( \
+      LOCAL_DECIMAL_FAN_SPEED + \
+      ( (LOCAL_DECIMAL_HIGH_FAN_SPEED - LOCAL_DECIMAL_FAN_SPEED) * \
+       (highest_CPU_temperature - CPU_TEMPERATURE_THRESHOLD_FOR_FAN_SPEED_INTERPOLATION) / \
+        (CPU_TEMPERATURE_THRESHOLD - CPU_TEMPERATURE_THRESHOLD_FOR_FAN_SPEED_INTERPOLATION) ) \
+  ))
+  echo "$CALCULATED_FAN_SPEED"
 }
 
 # Returns the maximum value among the given integer arguments.
@@ -372,17 +387,18 @@ function build_header() {
     header+=" CPU $i "
   done
 
-  header+=$' Exhaust          Active fan speed profile          Third-party PCIe card Dell default cooling response  Comment'
+  header+=$'  GPU          Exhaust          Active fan speed profile          Third-party PCIe card Dell default cooling response  Comment'
   printf "%s" "$header"
 }
 
 function print_temperature_array_line() {
   local -r LOCAL_INLET_TEMPERATURE="$1"
   local -r LOCAL_CPUS_TEMPERATURES="$2"
-  local -r LOCAL_EXHAUST_TEMPERATURE="$3"
-  local -r LOCAL_CURRENT_FAN_CONTROL_PROFILE="$4"
-  local -r LOCAL_THIRD_PARTY_PCIE_CARD_DELL_DEFAULT_COOLING_RESPONSE_STATUS="$5"
-  local -r LOCAL_COMMENT="$6"
+  local -r LOCAL_GPU_TEMPERATURE="$3"
+  local -r LOCAL_EXHAUST_TEMPERATURE="$4"
+  local -r LOCAL_CURRENT_FAN_CONTROL_PROFILE="$5"
+  local -r LOCAL_THIRD_PARTY_PCIE_CARD_DELL_DEFAULT_COOLING_RESPONSE_STATUS="$6"
+  local -r LOCAL_COMMENT="$7"
 
   # Creating an array from the string
   local -r CPUs_temperatures_array=(${LOCAL_CPUS_TEMPERATURES//;/ })
@@ -393,14 +409,16 @@ function print_temperature_array_line() {
     printf " %3d°C " $temperature
   done
 
-  printf " %5s°C  %40s  %51s  %s\n" "$LOCAL_EXHAUST_TEMPERATURE" "$LOCAL_CURRENT_FAN_CONTROL_PROFILE" "$LOCAL_THIRD_PARTY_PCIE_CARD_DELL_DEFAULT_COOLING_RESPONSE_STATUS" "$LOCAL_COMMENT"
+  printf " %5s°C %5s°C  %40s  %51s  %s\n" "$LOCAL_GPU_TEMPERATURE" "$LOCAL_EXHAUST_TEMPERATURE" "$LOCAL_CURRENT_FAN_CONTROL_PROFILE" "$LOCAL_THIRD_PARTY_PCIE_CARD_DELL_DEFAULT_COOLING_RESPONSE_STATUS" "$LOCAL_COMMENT"
 }
 
-# Define functions to check if CPU 1 and CPU 2 temperatures are above the threshold
-function CPU1_HEATING() { [ $CPU1_TEMPERATURE -gt "$CPU_TEMPERATURE_THRESHOLD_FOR_FAN_SPEED_INTERPOLATION" ]; }
-function CPU1_OVERHEATING() { [ $CPU1_TEMPERATURE -gt "$CPU_TEMPERATURE_THRESHOLD" ]; }
-function CPU2_HEATING() { [ $CPU2_TEMPERATURE -gt "$CPU_TEMPERATURE_THRESHOLD_FOR_FAN_SPEED_INTERPOLATION" ]; }
-function CPU2_OVERHEATING() { [ $CPU2_TEMPERATURE -gt "$CPU_TEMPERATURE_THRESHOLD" ]; }
+# Define functions to check if CPU 1 and CPU 2 and GPU temperatures are above the threshold
+function CPU1_HEATING() { [ "$CPU1_TEMPERATURE" -gt "$CPU_TEMPERATURE_THRESHOLD_FOR_FAN_SPEED_INTERPOLATION" ]; }
+function CPU1_OVERHEATING() { [ "$CPU1_TEMPERATURE" -gt "$CPU_TEMPERATURE_THRESHOLD" ]; }
+function CPU2_HEATING() { [ "$CPU2_TEMPERATURE" -gt "$CPU_TEMPERATURE_THRESHOLD_FOR_FAN_SPEED_INTERPOLATION" ]; }
+function CPU2_OVERHEATING() { [ "$CPU2_TEMPERATURE" -gt "$CPU_TEMPERATURE_THRESHOLD" ]; }
+function GPU_HEATING() { [ "$GPU_TEMPERATURE" -gt "$GPU_TEMPERATURE_THRESHOLD_FOR_FAN_SPEED_INTERPOLATION" ]; }
+function GPU_OVERHEATING() { [ "$GPU_TEMPERATURE" -gt "$GPU_TEMPERATURE_THRESHOLD" ]; }
 
 function print_error() {
   local -r ERROR_MESSAGE="$1"

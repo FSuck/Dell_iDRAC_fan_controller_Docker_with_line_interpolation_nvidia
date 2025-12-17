@@ -156,6 +156,8 @@ services:
       - CPU_TEMPERATURE_THRESHOLD_FOR_FAN_SPEED_INTERPOLATION=<decimal temperature lower threshold>
       - HIGH_FAN_SPEED=<decimal or hexadecimal fan speed when interpolation enabled>
       - KEEP_THIRD_PARTY_PCIE_CARD_COOLING_RESPONSE_STATE_ON_EXIT=<true or false>
+      - GPU_TEMPERATURE_THRESHOLD=<decimal temperature threshold>
+      - GPU_TEMPERATURE_THRESHOLD_FOR_FAN_SPEED_INTERPOLATION=<decimal temperature lower threshold> 
 ```
 
 <p align="right">(<a href="#top">back to top</a>)</p>
@@ -172,6 +174,8 @@ All parameters are optional as they have default values (including default iDRAC
 - `CPU_TEMPERATURE_THRESHOLD` parameter is the T°junction (junction temperature) threshold beyond which the Dell fan mode defined in your BIOS will become active again (to protect the server hardware against overheat). **Default** value is 60(°C).
 - `CHECK_INTERVAL` parameter is the time (in seconds) between each temperature check and potential profile change. **Default** value is 60(s).
 - `DISABLE_THIRD_PARTY_PCIE_CARD_DELL_DEFAULT_COOLING_RESPONSE` parameter is a boolean that allows to disable third-party PCIe card Dell default cooling response. **Default** value is false.
+- `GPU_TEMPERATURE_THRESHOLD` same as CPU_TEMPERATURE_THRESHOLD but for GPU
+- `GPU_TEMPERATURE_THRESHOLD_FOR_FAN_SPEED_INTERPOLATION` same as CPU_TEMPERATURE_THRESHOLD_FOR_FAN_SPEED_INTERPOLATION but for GPU
 
 If you want to enable fan speed interpolation, add the following parameters :
 - `CPU_TEMPERATURE_THRESHOLD_FOR_FAN_SPEED_INTERPOLATION` parameter enables fan speed interpolation once exceeded. Fan speed interpolation will increase your fan speed proportionally to **HIGH_FAN_SPEED** until **CPU_TEMPERATURE_THRESHOLD** is reached. This parameter must be less or equal to **CPU_TEMPERATURE_THRESHOLD**. **Default** value is 50(°C).
@@ -226,7 +230,7 @@ Don't forget to give the project a star! Thanks again!
 
 To test locally, use either :
 ```bash
-docker build -t tigerblue77/dell_idrac_fan_controller:dev .
+docker build -t tigerblue77/dell_idrac_fan_controller:dev . # todo
 docker run -d ...
 ```
 or
