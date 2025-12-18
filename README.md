@@ -27,30 +27,6 @@
 
 This Docker container only works on Dell PowerEdge servers that support IPMI commands, i.e. < iDRAC 9 firmware 3.30.30.30.
 
-### To access iDRAC over LAN (not needed in "local" mode) :
-
-1. Log into your iDRAC web console
-
-![001](https://user-images.githubusercontent.com/37409593/210168273-7d760e47-143e-4a6e-aca7-45b483024139.png)
-
-2. In the left side menu, expand "iDRAC settings", click "Network" then click "IPMI Settings" link at the top of the web page.
-
-![002](https://user-images.githubusercontent.com/37409593/210168249-994f29cc-ac9e-4667-84f7-07f6d9a87522.png)
-
-3. Check the "Enable IPMI over LAN" checkbox then click "Apply" button.
-
-![003](https://user-images.githubusercontent.com/37409593/210168248-a68982c4-9fe7-40e7-8b2c-b3f06fbfee62.png)
-
-4. Test access to IPMI over LAN running the following commands :
-```bash
-apt -y install ipmitool
-ipmitool -I lanplus \
-  -H <iDRAC IP address> \
-  -U <iDRAC username> \
-  -P <iDRAC password> \
-  sdr elist all
-```
-
 <p align="right">(<a href="#top">back to top</a>)</p>
 
 <!-- SUPPORTED ARCHITECTURES -->
@@ -72,92 +48,42 @@ This Docker container is currently built and available for the following CPU arc
 
 <!-- USAGE -->
 ## Usage
+This version only works locally because it has to perform "nvidia-smi" commands.
+These commands require the GPU to be passed into the container. 
+Guess its somehow possible but for the moment it's enough.
 
-1. with local iDRAC:
+1. Build the image from the docker file
+```docker build -t idrac_interpolar_nvidia:0.1```
 
-```bash
-docker run -d \
-  --name Dell_iDRAC_fan_controller \
-  --restart=unless-stopped \
-  -e IDRAC_HOST=local \
-  -e FAN_SPEED=<decimal or hexadecimal fan speed> \
-  -e CPU_TEMPERATURE_THRESHOLD=<decimal temperature threshold> \
-  -e CHECK_INTERVAL=<seconds between each check> \
-  -e DISABLE_THIRD_PARTY_PCIE_CARD_DELL_DEFAULT_COOLING_RESPONSE=<true or false> \
-  -e CPU_TEMPERATURE_THRESHOLD_FOR_FAN_SPEED_INTERPOLATION=<decimal temperature lower threshold> \
-  -e HIGH_FAN_SPEED=<decimal or hexadecimal fan speed> \
-  -e KEEP_THIRD_PARTY_PCIE_CARD_COOLING_RESPONSE_STATE_ON_EXIT=<true or false> \
-  --device=/dev/ipmi0:/dev/ipmi0:rw \
-  tigerblue77/dell_idrac_fan_controller:latest
-```
-
-2. with LAN iDRAC:
-
-```bash
-docker run -d \
-  --name Dell_iDRAC_fan_controller \
-  --restart=unless-stopped \
-  -e IDRAC_HOST=<iDRAC IP address> \
-  -e IDRAC_USERNAME=<iDRAC username> \
-  -e IDRAC_PASSWORD=<iDRAC password> \
-  -e FAN_SPEED=<decimal or hexadecimal fan speed> \
-  -e CPU_TEMPERATURE_THRESHOLD=<decimal temperature threshold> \
-  -e CHECK_INTERVAL=<seconds between each check> \
-  -e DISABLE_THIRD_PARTY_PCIE_CARD_DELL_DEFAULT_COOLING_RESPONSE=<true or false> \
-  -e CPU_TEMPERATURE_THRESHOLD_FOR_FAN_SPEED_INTERPOLATION=<decimal temperature lower threshold> \
-  -e HIGH_FAN_SPEED=<decimal or hexadecimal fan speed> \
-  -e KEEP_THIRD_PARTY_PCIE_CARD_COOLING_RESPONSE_STATE_ON_EXIT=<true or false> \
-  tigerblue77/dell_idrac_fan_controller:latest
-```
-
+2. Start with docker compose
 `docker-compose.yml` examples:
 
-1. to use with local iDRAC:
-
 ```yml
-version: '3.8'
-
 services:
-  Dell_iDRAC_fan_controller:
-    image: tigerblue77/dell_idrac_fan_controller:latest
-    container_name: Dell_iDRAC_fan_controller
-    restart: unless-stopped
-    environment:
-      - IDRAC_HOST=local
-      - FAN_SPEED=<decimal or hexadecimal fan speed>
-      - CPU_TEMPERATURE_THRESHOLD=<decimal temperature threshold>
-      - CHECK_INTERVAL=<seconds between each check>
-      - DISABLE_THIRD_PARTY_PCIE_CARD_DELL_DEFAULT_COOLING_RESPONSE=<true or false>
-      - CPU_TEMPERATURE_THRESHOLD_FOR_FAN_SPEED_INTERPOLATION=<decimal temperature lower threshold>
-      - HIGH_FAN_SPEED=<decimal or hexadecimal fan speed>
-      - KEEP_THIRD_PARTY_PCIE_CARD_COOLING_RESPONSE_STATE_ON_EXIT=<true or false>
-    devices:
-      - /dev/ipmi0:/dev/ipmi0:rw
-```
-
-2. to use with LAN iDRAC:
-
-```yml
-version: '3.8'
-
-services:
-  Dell_iDRAC_fan_controller:
-    image: tigerblue77/dell_idrac_fan_controller:latest
-    container_name: Dell_iDRAC_fan_controller
-    restart: unless-stopped
-    environment:
-      - IDRAC_HOST=<iDRAC IP address>
-      - IDRAC_USERNAME=<iDRAC username>
-      - IDRAC_PASSWORD=<iDRAC password>
-      - FAN_SPEED=<decimal or hexadecimal fan speed>
-      - CPU_TEMPERATURE_THRESHOLD=<decimal temperature threshold>
-      - CHECK_INTERVAL=<seconds between each check>
-      - DISABLE_THIRD_PARTY_PCIE_CARD_DELL_DEFAULT_COOLING_RESPONSE=<true or false>
-      - CPU_TEMPERATURE_THRESHOLD_FOR_FAN_SPEED_INTERPOLATION=<decimal temperature lower threshold>
-      - HIGH_FAN_SPEED=<decimal or hexadecimal fan speed when interpolation enabled>
-      - KEEP_THIRD_PARTY_PCIE_CARD_COOLING_RESPONSE_STATE_ON_EXIT=<true or false>
-      - GPU_TEMPERATURE_THRESHOLD=<decimal temperature threshold>
-      - GPU_TEMPERATURE_THRESHOLD_FOR_FAN_SPEED_INTERPOLATION=<decimal temperature lower threshold> 
+   Dell_iDRAC_fan_controller:
+      image: idrac_interpolar_nvidia:0.1
+      container_name: fan_controller
+      restart: unless-stopped
+      deploy:
+         resources:
+            reservations:
+               devices:
+                  - driver: nvidia
+                    count: all
+                    capabilities: [gpu]
+      environment:
+         - IDRAC_HOST=local
+         - ENABLE_LINE_INTERPOLATION=true
+         - FAN_SPEED=5
+         - HIGH_FAN_SPEED=50
+         - CPU_TEMPERATURE_FOR_START_LINE_INTERPOLATION=42
+         - CPU_TEMPERATURE_THRESHOLD=60
+         - GPU_TEMEPRATURE_FOR_START_LINE_INTERPOLATION=42
+         - GPU_TEMPERATURE_THRESHOLD=70
+         - CHECK_INTERVAL=3
+         - DISABLE_THIRD_PARTY_PCIE_CARD_DELL_DEFAULT_COOLING_RESPONSE=false
+      devices:
+         - /dev/ipmi0:/dev/ipmi0:rw
 ```
 
 <p align="right">(<a href="#top">back to top</a>)</p>
@@ -230,7 +156,7 @@ Don't forget to give the project a star! Thanks again!
 
 To test locally, use either :
 ```bash
-docker build -t tigerblue77/dell_idrac_fan_controller:dev . # todo
+docker build -t tigerblue77/dell_idrac_fan_controller:dev .
 docker run -d ...
 ```
 or
